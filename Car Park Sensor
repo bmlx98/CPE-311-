@@ -1,0 +1,384 @@
+/* Includes ------------------------------------------------------------------*/
+#include "stm32l1xx.h"
+#include "stm32l1xx_ll_system.h"
+#include "stm32l1xx_ll_bus.h"
+#include "stm32l1xx_ll_utils.h"
+#include "stm32l1xx_ll_rcc.h"
+#include "stm32l1xx_ll_pwr.h"
+#include "stm32l1xx_ll_gpio.h"
+#include "stm32l1xx_ll_usart.h"
+#include "stm32l1xx_ll_lcd.h"
+#include "stm32l152_glass_lcd.h"
+#include "stm32l1xx_ll_tim.h"
+
+void SystemClock_Config(void);
+void seven_config(void);		//7-segment
+/*-------Speaker---------------*/
+void TIM_BASE_Config(uint16_t);			
+void TIM_OC_GPIO_Config(void);
+void TIM_OC_Config(uint16_t);
+void TIM_BASE_DurationConfig(void);
+/*-------------END--------------*/
+void Sensor_Config(void);
+void TIMx_IC_Config(void);
+
+void GPIO_Config(void)
+{
+	LL_GPIO_InitTypeDef GPIO_InitStruct;
+		LL_AHB1_GRP1_EnableClock(LL_AHB1_GRP1_PERIPH_GPIOB);
+		GPIO_InitStruct.Mode = LL_GPIO_MODE_OUTPUT;
+		GPIO_InitStruct.Pin = LL_GPIO_PIN_4 | LL_GPIO_PIN_5 | LL_GPIO_PIN_7;
+		GPIO_InitStruct.OutputType = LL_GPIO_OUTPUT_PUSHPULL;
+		GPIO_InitStruct.Pull = LL_GPIO_PULL_NO;
+		GPIO_InitStruct.Speed = LL_GPIO_SPEED_FREQ_HIGH;
+		LL_GPIO_Init(GPIOB, &GPIO_InitStruct);
+}
+
+#define E_O6					(uint16_t) 1318
+#define MUTE					(uint16_t) 100
+
+/*for 10ms update event*/
+#define TIMx_PSC			2 
+
+/*Macro function for ARR calculation*/
+#define ARR_CALCULATE(N) ((SystemCoreClock) / ((TIMx_PSC) * (N)))
+
+
+uint16_t uwIC1 = 0;
+uint16_t uwIC2 = 0;
+uint16_t uwDiff = 0;
+float period = 0;
+float test_dist = 0;
+float dis = 0;
+uint16_t i=0;					
+uint32_t num;
+uint32_t sh_seg[4];
+
+uint32_t TIM3CLK;
+uint32_t PSC;
+uint32_t IC1PSC;
+
+int state = 1;
+
+/*-----------7segment_PIN_DIGIT--------------------------*/
+uint32_t seg[10] = {LL_GPIO_PIN_2 | LL_GPIO_PIN_10 | LL_GPIO_PIN_11 | LL_GPIO_PIN_12 | LL_GPIO_PIN_13 | LL_GPIO_PIN_14,
+										LL_GPIO_PIN_10| LL_GPIO_PIN_11,
+										LL_GPIO_PIN_2 | LL_GPIO_PIN_10 | LL_GPIO_PIN_12 | LL_GPIO_PIN_13 | LL_GPIO_PIN_15,
+										LL_GPIO_PIN_2 | LL_GPIO_PIN_10 | LL_GPIO_PIN_11 | LL_GPIO_PIN_12 | LL_GPIO_PIN_15,
+										LL_GPIO_PIN_10| LL_GPIO_PIN_11 | LL_GPIO_PIN_14  | LL_GPIO_PIN_15,
+										LL_GPIO_PIN_2 | LL_GPIO_PIN_11 | LL_GPIO_PIN_12 | LL_GPIO_PIN_14 | LL_GPIO_PIN_15,
+										LL_GPIO_PIN_2 | LL_GPIO_PIN_11 | LL_GPIO_PIN_12 | LL_GPIO_PIN_13 | LL_GPIO_PIN_14 | LL_GPIO_PIN_15,
+										LL_GPIO_PIN_2 | LL_GPIO_PIN_10 | LL_GPIO_PIN_15,
+										LL_GPIO_PIN_2 | LL_GPIO_PIN_10 | LL_GPIO_PIN_11 | LL_GPIO_PIN_12 | LL_GPIO_PIN_13 | LL_GPIO_PIN_14 | LL_GPIO_PIN_15,
+										LL_GPIO_PIN_2 | LL_GPIO_PIN_10 | LL_GPIO_PIN_11 | LL_GPIO_PIN_12 | LL_GPIO_PIN_14 | LL_GPIO_PIN_15};
+
+uint32_t digit[4] = {LL_GPIO_PIN_0, LL_GPIO_PIN_1, LL_GPIO_PIN_2, LL_GPIO_PIN_3};
+/*-----------------------------------END-------------------------------------------------------*/
+
+
+int main(void)
+{
+  SystemClock_Config();
+	TIMx_IC_Config();
+	GPIO_Config();
+	Sensor_Config();
+	seven_config();
+	TIM_OC_Config(ARR_CALCULATE(MUTE));
+	TIM_BASE_DurationConfig();
+	
+	
+	while(1)
+	{
+	
+	LL_GPIO_SetOutputPin(GPIOA, LL_GPIO_PIN_8);
+	LL_mDelay(1);
+	LL_GPIO_ResetOutputPin(GPIOA, LL_GPIO_PIN_8);
+				
+				//Period calculation
+				PSC = LL_TIM_GetPrescaler(TIM3) + 1;
+				TIM3CLK = SystemCoreClock / PSC;
+				IC1PSC = __LL_TIM_GET_ICPSC_RATIO(LL_TIM_IC_GetPrescaler(TIM3, LL_TIM_CHANNEL_CH3));
+				period = (uwDiff*(PSC) * 1.0) / (TIM3CLK *IC1PSC * 1.0); //calculate uptime period
+				test_dist = (period*340)*100.0/2.0;
+				num = (int)test_dist;
+				
+				LL_GPIO_ResetOutputPin(GPIOB, LL_GPIO_PIN_4);
+				LL_GPIO_ResetOutputPin(GPIOB, LL_GPIO_PIN_5);
+				LL_GPIO_ResetOutputPin(GPIOB, LL_GPIO_PIN_7);
+		
+				if(num<=5) //-----------------RED
+				{
+					LL_GPIO_SetOutputPin(GPIOB, LL_GPIO_PIN_4);
+					
+						LL_TIM_SetAutoReload(TIM4, ARR_CALCULATE(MUTE)); //Change ARR of Timer PWM
+				}
+				else if(num>5 && num <15) //-----------------YELLOW
+				{
+					LL_GPIO_SetOutputPin(GPIOB, LL_GPIO_PIN_5);
+					if(LL_TIM_IsActiveFlag_UPDATE(TIM2) == SET)
+					{
+						LL_TIM_ClearFlag_UPDATE(TIM2);
+						if(state) {
+						LL_TIM_SetAutoReload(TIM4, ARR_CALCULATE(E_O6)); //Change ARR of Timer PWM
+							state = 0;
+						} else {
+						LL_TIM_SetAutoReload(TIM4, ARR_CALCULATE(MUTE)); //Change ARR of Timer PWM
+							state = 1;
+						}
+						LL_TIM_SetCounter(TIM2, 0);
+					}
+				}
+				else  //-----------------GREEN
+				{
+					LL_GPIO_SetOutputPin(GPIOB, LL_GPIO_PIN_7);
+					LL_TIM_SetAutoReload(TIM4, ARR_CALCULATE(E_O6)); //Change ARR of Timer PWM
+				}
+				
+				for(int order=3;order>=0;order--)
+				{
+					sh_seg[order] = num%10;
+					num = num/10;
+				}
+			
+				for(i=0;i<4;++i)
+				{
+					LL_GPIO_ResetOutputPin(GPIOC,LL_GPIO_PIN_0 |LL_GPIO_PIN_1 |LL_GPIO_PIN_2 |LL_GPIO_PIN_3 );
+					LL_GPIO_ResetOutputPin(GPIOB,LL_GPIO_PIN_2 | LL_GPIO_PIN_10 |LL_GPIO_PIN_11 |LL_GPIO_PIN_12 |LL_GPIO_PIN_13 |LL_GPIO_PIN_14 |LL_GPIO_PIN_15);
+			
+					LL_GPIO_SetOutputPin(GPIOB,seg[sh_seg[i]]);
+					LL_GPIO_SetOutputPin(GPIOC,digit[i]);		
+					LL_mDelay(1);
+				}
+	}
+}
+
+/*-----------7segment_PIN_DIGIT--------------------------*/
+void seven_config(void)
+{
+	LL_GPIO_InitTypeDef f2481ah_initstruct;
+	LL_AHB1_GRP1_EnableClock(LL_AHB1_GRP1_PERIPH_GPIOB);
+	LL_AHB1_GRP1_EnableClock(LL_AHB1_GRP1_PERIPH_GPIOC);
+	
+	f2481ah_initstruct.Mode = LL_GPIO_MODE_OUTPUT;
+	f2481ah_initstruct.OutputType = LL_GPIO_OUTPUT_PUSHPULL;
+	f2481ah_initstruct.Pull = LL_GPIO_PULL_NO;
+	f2481ah_initstruct.Speed = LL_GPIO_SPEED_FREQ_VERY_HIGH;
+	f2481ah_initstruct.Pin = LL_GPIO_PIN_2 | LL_GPIO_PIN_10 | LL_GPIO_PIN_11 | LL_GPIO_PIN_12 |
+													 LL_GPIO_PIN_13 | LL_GPIO_PIN_14 | LL_GPIO_PIN_15;
+	LL_GPIO_Init(GPIOB, &f2481ah_initstruct);
+	
+	f2481ah_initstruct.Pin = LL_GPIO_PIN_0 | LL_GPIO_PIN_1 | LL_GPIO_PIN_2 | LL_GPIO_PIN_3;
+	LL_GPIO_Init (GPIOC, &f2481ah_initstruct);
+}
+
+/*----------Sensor-------------*/
+void Sensor_Config(void)
+{
+		LL_GPIO_InitTypeDef timic_gpio;
+		LL_AHB1_GRP1_EnableClock(LL_AHB1_GRP1_PERIPH_GPIOA);
+		LL_AHB1_GRP1_EnableClock(LL_AHB1_GRP1_PERIPH_GPIOC);
+	
+		//config for output
+		timic_gpio.Mode = LL_GPIO_MODE_OUTPUT;
+		timic_gpio.Pull = LL_GPIO_PULL_NO;
+		timic_gpio.Pin =  LL_GPIO_PIN_8;
+		timic_gpio.OutputType = LL_GPIO_OUTPUT_PUSHPULL;
+		timic_gpio.Speed = LL_GPIO_SPEED_FREQ_VERY_HIGH;
+		LL_GPIO_Init(GPIOA, &timic_gpio);
+	
+		//GPIO_Config pin for rising&falling
+		timic_gpio.Mode = LL_GPIO_MODE_ALTERNATE;
+		timic_gpio.Pull = LL_GPIO_PULL_NO;
+		timic_gpio.Pin =  LL_GPIO_PIN_8 | LL_GPIO_PIN_9;
+		timic_gpio.OutputType = LL_GPIO_OUTPUT_PUSHPULL;
+		timic_gpio.Speed = LL_GPIO_SPEED_FREQ_VERY_HIGH;
+		timic_gpio.Alternate = LL_GPIO_AF_2;
+		LL_GPIO_Init(GPIOC, &timic_gpio);
+
+}
+	
+void TIMx_IC_Config(void)
+{
+		LL_TIM_IC_InitTypeDef timic;
+	
+		LL_APB1_GRP1_EnableClock(LL_APB1_GRP1_PERIPH_TIM3);
+	
+		//TIM_IC Configure CH3
+		timic.ICActiveInput = LL_TIM_ACTIVEINPUT_DIRECTTI;
+		timic.ICFilter = LL_TIM_IC_FILTER_FDIV1_N2;
+		timic.ICPolarity = LL_TIM_IC_POLARITY_RISING;
+		timic.ICPrescaler = LL_TIM_ICPSC_DIV1;
+		LL_TIM_IC_Init(TIM3, LL_TIM_CHANNEL_CH3, &timic);
+		
+		//TIM_IC Configure CH4
+		timic.ICActiveInput = LL_TIM_ACTIVEINPUT_DIRECTTI;
+		timic.ICFilter = LL_TIM_IC_FILTER_FDIV1_N2;
+		timic.ICPolarity = LL_TIM_IC_POLARITY_FALLING;
+		timic.ICPrescaler = LL_TIM_ICPSC_DIV1;
+		LL_TIM_IC_Init(TIM3, LL_TIM_CHANNEL_CH4, &timic);
+		
+		NVIC_SetPriority(TIM3_IRQn, 0);
+		
+		NVIC_EnableIRQ(TIM3_IRQn);
+		LL_TIM_EnableIT_CC3(TIM3);
+		LL_TIM_EnableIT_CC4(TIM3);		
+		LL_TIM_CC_EnableChannel(TIM3, LL_TIM_CHANNEL_CH3);
+		LL_TIM_CC_EnableChannel(TIM3, LL_TIM_CHANNEL_CH4);
+		
+		LL_TIM_EnableCounter(TIM3);
+}
+
+void TIM3_IRQHandler(void)
+{	  
+		if(LL_TIM_IsActiveFlag_CC3(TIM3) == SET)
+		{
+			LL_TIM_ClearFlag_CC3(TIM3);
+				//Detect 1st rising edge
+				uwIC1 = LL_TIM_IC_GetCaptureCH3(TIM3);
+		}
+		
+			if(LL_TIM_IsActiveFlag_CC4(TIM3) == SET)
+		{
+			LL_TIM_ClearFlag_CC4(TIM3);
+				//Detect 1st falling edge
+				uwIC2 = LL_TIM_IC_GetCaptureCH4(TIM3);
+			
+			if(uwIC2 > uwIC1)
+				uwDiff = uwIC2 - uwIC1;
+			else if(uwIC2 < uwIC1)
+				uwDiff = ((LL_TIM_GetAutoReload(TIM3) - uwIC1) + uwIC2) + 1;
+					
+		}
+
+}
+/*---------------END------------------*/
+
+void TIM_BASE_DurationConfig(void)
+{
+	LL_TIM_InitTypeDef timbase_initstructure;
+	
+	LL_APB1_GRP1_EnableClock(LL_APB1_GRP1_PERIPH_TIM2);
+	//Time-base configure
+	timbase_initstructure.ClockDivision = LL_TIM_CLOCKDIVISION_DIV1;
+	timbase_initstructure.CounterMode = LL_TIM_COUNTERMODE_UP;
+	timbase_initstructure.Autoreload = 300 - 1;
+	timbase_initstructure.Prescaler =  32000 - 1;
+	LL_TIM_Init(TIM2, &timbase_initstructure);
+	
+	LL_TIM_EnableCounter(TIM2); 
+	LL_TIM_ClearFlag_UPDATE(TIM2); //Force clear update flag
+}
+
+void TIM_BASE_Config(uint16_t ARR)
+{
+	LL_TIM_InitTypeDef timbase_initstructure;
+	
+	LL_APB1_GRP1_EnableClock(LL_APB1_GRP1_PERIPH_TIM4);
+	//Time-base configure
+	timbase_initstructure.ClockDivision = LL_TIM_CLOCKDIVISION_DIV1;
+	timbase_initstructure.CounterMode = LL_TIM_COUNTERMODE_UP;
+	timbase_initstructure.Autoreload = ARR - 1;
+	timbase_initstructure.Prescaler =  TIMx_PSC- 1;
+	LL_TIM_Init(TIM4, &timbase_initstructure);
+	
+	LL_TIM_EnableCounter(TIM4); 
+}
+
+void TIM_OC_GPIO_Config(void)
+{
+	LL_GPIO_InitTypeDef gpio_initstructure;
+	
+	LL_AHB1_GRP1_EnableClock(LL_AHB1_GRP1_PERIPH_GPIOB);
+	
+	gpio_initstructure.Mode = LL_GPIO_MODE_ALTERNATE;
+	gpio_initstructure.Alternate = LL_GPIO_AF_2;
+	gpio_initstructure.OutputType = LL_GPIO_OUTPUT_PUSHPULL;
+	gpio_initstructure.Pin = LL_GPIO_PIN_6;
+	gpio_initstructure.Pull = LL_GPIO_PULL_NO;
+	gpio_initstructure.Speed = LL_GPIO_SPEED_FREQ_VERY_HIGH;
+	LL_GPIO_Init(GPIOB, &gpio_initstructure);
+}
+
+void TIM_OC_Config(uint16_t note)
+{
+	LL_TIM_OC_InitTypeDef tim_oc_initstructure;
+	
+	TIM_OC_GPIO_Config();
+	TIM_BASE_Config(note);
+	
+	tim_oc_initstructure.OCState = LL_TIM_OCSTATE_DISABLE;
+	tim_oc_initstructure.OCMode = LL_TIM_OCMODE_PWM1;
+	tim_oc_initstructure.OCPolarity = LL_TIM_OCPOLARITY_HIGH;
+	tim_oc_initstructure.CompareValue = LL_TIM_GetAutoReload(TIM4) / 2;
+	LL_TIM_OC_Init(TIM4, LL_TIM_CHANNEL_CH1, &tim_oc_initstructure);
+	/*Interrupt Configure*/
+	NVIC_SetPriority(TIM4_IRQn, 1);
+	NVIC_EnableIRQ(TIM4_IRQn);
+	LL_TIM_EnableIT_CC1(TIM4);
+	
+	/*Start Output Compare in PWM Mode*/
+	LL_TIM_CC_EnableChannel(TIM4, LL_TIM_CHANNEL_CH1);
+	LL_TIM_EnableCounter(TIM4);
+}
+
+void TIM4_IRQHandler(void)
+{
+	if(LL_TIM_IsActiveFlag_CC1(TIM4) == SET)
+	{
+		LL_TIM_ClearFlag_CC1(TIM4);
+	}
+}
+
+void SystemClock_Config(void)
+{
+  /* Enable ACC64 access and set FLASH latency */ 
+  LL_FLASH_Enable64bitAccess();; 
+  LL_FLASH_SetLatency(LL_FLASH_LATENCY_1);
+
+  /* Set Voltage scale1 as MCU will run at 32MHz */
+  LL_APB1_GRP1_EnableClock(LL_APB1_GRP1_PERIPH_PWR);
+  LL_PWR_SetRegulVoltageScaling(LL_PWR_REGU_VOLTAGE_SCALE1);
+  
+  /* Poll VOSF bit of in PWR_CSR. Wait until it is reset to 0 */
+  while (LL_PWR_IsActiveFlag_VOSF() != 0)
+  {
+  };
+  
+  /* Enable HSI if not already activated*/
+  if (LL_RCC_HSI_IsReady() == 0)
+  {
+    /* HSI configuration and activation */
+    LL_RCC_HSI_Enable();
+    while(LL_RCC_HSI_IsReady() != 1)
+    {
+    };
+  }
+  
+	
+  /* Main PLL configuration and activation */
+  LL_RCC_PLL_ConfigDomain_SYS(LL_RCC_PLLSOURCE_HSI, LL_RCC_PLL_MUL_6, LL_RCC_PLL_DIV_3);
+
+  LL_RCC_PLL_Enable();
+  while(LL_RCC_PLL_IsReady() != 1)
+  {
+  };
+  
+  /* Sysclk activation on the main PLL */
+  LL_RCC_SetAHBPrescaler(LL_RCC_SYSCLK_DIV_1);
+  LL_RCC_SetSysClkSource(LL_RCC_SYS_CLKSOURCE_PLL);
+  while(LL_RCC_GetSysClkSource() != LL_RCC_SYS_CLKSOURCE_STATUS_PLL)
+  {
+  };
+  
+  /* Set APB1 & APB2 prescaler*/
+  LL_RCC_SetAPB1Prescaler(LL_RCC_APB1_DIV_1);
+  LL_RCC_SetAPB2Prescaler(LL_RCC_APB2_DIV_1);
+
+  /* Set systick to 1ms in using frequency set to 32MHz                             */
+  /* This frequency can be calculated through LL RCC macro                          */
+  /* ex: __LL_RCC_CALC_PLLCLK_FREQ (HSI_VALUE, LL_RCC_PLL_MUL_6, LL_RCC_PLL_DIV_3); */
+  LL_Init1msTick(32000000);
+  
+  /* Update CMSIS variable (which can be updated also through SystemCoreClockUpdate function) */
+  LL_SetSystemCoreClock(32000000);
+}
