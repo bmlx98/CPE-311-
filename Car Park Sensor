@@ -253,6 +253,7 @@ void TIM3_IRQHandler(void)
 }
 /*---------------END------------------*/
 
+/*----------Speaker-------------*/
 void TIM_BASE_DurationConfig(void)
 {
 	LL_TIM_InitTypeDef timbase_initstructure;
@@ -328,6 +329,7 @@ void TIM4_IRQHandler(void)
 		LL_TIM_ClearFlag_CC1(TIM4);
 	}
 }
+/*---------------END------------------*/
 
 void SystemClock_Config(void)
 {
