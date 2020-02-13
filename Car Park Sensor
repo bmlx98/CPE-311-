@@ -12,15 +12,18 @@
 #include "stm32l1xx_ll_tim.h"
 
 void SystemClock_Config(void);
-void seven_config(void);		//7-segment
+
 /*-------Speaker---------------*/
 void TIM_BASE_Config(uint16_t);			
 void TIM_OC_GPIO_Config(void);
 void TIM_OC_Config(uint16_t);
 void TIM_BASE_DurationConfig(void);
 /*-------------END--------------*/
+
+/*-------Sensor---------------*/
 void Sensor_Config(void);
 void TIMx_IC_Config(void);
+/*-------------END--------------*/
 
 void GPIO_Config(void)
 {
@@ -32,6 +35,24 @@ void GPIO_Config(void)
 		GPIO_InitStruct.Pull = LL_GPIO_PULL_NO;
 		GPIO_InitStruct.Speed = LL_GPIO_SPEED_FREQ_HIGH;
 		LL_GPIO_Init(GPIOB, &GPIO_InitStruct);
+}
+
+/*-----------7segment_PIN_DIGIT--------------------------*/
+void seven_config(void)
+{
+	LL_GPIO_InitTypeDef f2481ah_initstruct;
+	LL_AHB1_GRP1_EnableClock(LL_AHB1_GRP1_PERIPH_GPIOB);
+	LL_AHB1_GRP1_EnableClock(LL_AHB1_GRP1_PERIPH_GPIOC);
+	
+	f2481ah_initstruct.Mode = LL_GPIO_MODE_OUTPUT;
+	f2481ah_initstruct.OutputType = LL_GPIO_OUTPUT_PUSHPULL;
+	f2481ah_initstruct.Pull = LL_GPIO_PULL_NO;
+	f2481ah_initstruct.Speed = LL_GPIO_SPEED_FREQ_VERY_HIGH;
+	f2481ah_initstruct.Pin = LL_GPIO_PIN_2 | LL_GPIO_PIN_10 | LL_GPIO_PIN_11 | LL_GPIO_PIN_12 | LL_GPIO_PIN_13 | LL_GPIO_PIN_14 | LL_GPIO_PIN_15;
+	LL_GPIO_Init(GPIOB, &f2481ah_initstruct);
+	
+	f2481ah_initstruct.Pin = LL_GPIO_PIN_0 | LL_GPIO_PIN_1 | LL_GPIO_PIN_2 | LL_GPIO_PIN_3;
+	LL_GPIO_Init (GPIOC, &f2481ah_initstruct);
 }
 
 #define E_O6					(uint16_t) 1318
@@ -150,25 +171,6 @@ int main(void)
 					LL_mDelay(1);
 				}
 	}
-}
-
-/*-----------7segment_PIN_DIGIT--------------------------*/
-void seven_config(void)
-{
-	LL_GPIO_InitTypeDef f2481ah_initstruct;
-	LL_AHB1_GRP1_EnableClock(LL_AHB1_GRP1_PERIPH_GPIOB);
-	LL_AHB1_GRP1_EnableClock(LL_AHB1_GRP1_PERIPH_GPIOC);
-	
-	f2481ah_initstruct.Mode = LL_GPIO_MODE_OUTPUT;
-	f2481ah_initstruct.OutputType = LL_GPIO_OUTPUT_PUSHPULL;
-	f2481ah_initstruct.Pull = LL_GPIO_PULL_NO;
-	f2481ah_initstruct.Speed = LL_GPIO_SPEED_FREQ_VERY_HIGH;
-	f2481ah_initstruct.Pin = LL_GPIO_PIN_2 | LL_GPIO_PIN_10 | LL_GPIO_PIN_11 | LL_GPIO_PIN_12 |
-													 LL_GPIO_PIN_13 | LL_GPIO_PIN_14 | LL_GPIO_PIN_15;
-	LL_GPIO_Init(GPIOB, &f2481ah_initstruct);
-	
-	f2481ah_initstruct.Pin = LL_GPIO_PIN_0 | LL_GPIO_PIN_1 | LL_GPIO_PIN_2 | LL_GPIO_PIN_3;
-	LL_GPIO_Init (GPIOC, &f2481ah_initstruct);
 }
 
 /*----------Sensor-------------*/
