@@ -37,7 +37,7 @@ void GPIO_Config(void)
 		LL_GPIO_Init(GPIOB, &GPIO_InitStruct);
 }
 
-/*-----------7segment_PIN_DIGIT--------------------------*/
+/*-----------7segment--------------------------*/
 void seven_config(void)
 {
 	LL_GPIO_InitTypeDef f2481ah_initstruct;
@@ -54,6 +54,7 @@ void seven_config(void)
 	f2481ah_initstruct.Pin = LL_GPIO_PIN_0 | LL_GPIO_PIN_1 | LL_GPIO_PIN_2 | LL_GPIO_PIN_3;
 	LL_GPIO_Init (GPIOC, &f2481ah_initstruct);
 }
+/*-------------END--------------*/
 
 #define E_O6					(uint16_t) 1318
 #define MUTE					(uint16_t) 100
@@ -70,7 +71,6 @@ uint16_t uwIC2 = 0;
 uint16_t uwDiff = 0;
 float period = 0;
 float test_dist = 0;
-float dis = 0;
 uint16_t i=0;					
 uint32_t num;
 uint32_t sh_seg[4];
@@ -89,7 +89,7 @@ uint32_t seg[10] = {LL_GPIO_PIN_2 | LL_GPIO_PIN_10 | LL_GPIO_PIN_11 | LL_GPIO_PI
 										LL_GPIO_PIN_10| LL_GPIO_PIN_11 | LL_GPIO_PIN_14  | LL_GPIO_PIN_15,
 										LL_GPIO_PIN_2 | LL_GPIO_PIN_11 | LL_GPIO_PIN_12 | LL_GPIO_PIN_14 | LL_GPIO_PIN_15,
 										LL_GPIO_PIN_2 | LL_GPIO_PIN_11 | LL_GPIO_PIN_12 | LL_GPIO_PIN_13 | LL_GPIO_PIN_14 | LL_GPIO_PIN_15,
-										LL_GPIO_PIN_2 | LL_GPIO_PIN_10 | LL_GPIO_PIN_15,
+										LL_GPIO_PIN_2 | LL_GPIO_PIN_10 | LL_GPIO_PIN_11,
 										LL_GPIO_PIN_2 | LL_GPIO_PIN_10 | LL_GPIO_PIN_11 | LL_GPIO_PIN_12 | LL_GPIO_PIN_13 | LL_GPIO_PIN_14 | LL_GPIO_PIN_15,
 										LL_GPIO_PIN_2 | LL_GPIO_PIN_10 | LL_GPIO_PIN_11 | LL_GPIO_PIN_12 | LL_GPIO_PIN_14 | LL_GPIO_PIN_15};
 
@@ -110,30 +110,29 @@ int main(void)
 	
 	while(1)
 	{
-	
+	//Ultrasonic sensor Trigger
 	LL_GPIO_SetOutputPin(GPIOA, LL_GPIO_PIN_8);
 	LL_mDelay(1);
 	LL_GPIO_ResetOutputPin(GPIOA, LL_GPIO_PIN_8);
 				
-				//Period calculation
 				PSC = LL_TIM_GetPrescaler(TIM3) + 1;
 				TIM3CLK = SystemCoreClock / PSC;
 				IC1PSC = __LL_TIM_GET_ICPSC_RATIO(LL_TIM_IC_GetPrescaler(TIM3, LL_TIM_CHANNEL_CH3));
 				period = (uwDiff*(PSC) * 1.0) / (TIM3CLK *IC1PSC * 1.0); //calculate uptime period
-				test_dist = (period*340)*100.0/2.0;
+				test_dist = (period*340)*100.0/2.0;											 //Distance calculation
 				num = (int)test_dist;
 				
 				LL_GPIO_ResetOutputPin(GPIOB, LL_GPIO_PIN_4);
 				LL_GPIO_ResetOutputPin(GPIOB, LL_GPIO_PIN_5);
 				LL_GPIO_ResetOutputPin(GPIOB, LL_GPIO_PIN_7);
 		
-				if(num<=5) //-----------------RED
+				if(num<=5) //-----------------Red LED and speaker frequency high
 				{
 					LL_GPIO_SetOutputPin(GPIOB, LL_GPIO_PIN_4);
 					
 						LL_TIM_SetAutoReload(TIM4, ARR_CALCULATE(MUTE)); //Change ARR of Timer PWM
 				}
-				else if(num>5 && num <15) //-----------------YELLOW
+				else if(num>5 && num <15) //-----------------YELLOW LED and speaker frequency low
 				{
 					LL_GPIO_SetOutputPin(GPIOB, LL_GPIO_PIN_5);
 					if(LL_TIM_IsActiveFlag_UPDATE(TIM2) == SET)
@@ -149,12 +148,13 @@ int main(void)
 						LL_TIM_SetCounter(TIM2, 0);
 					}
 				}
-				else  //-----------------GREEN
+				else  //-----------------GREEN LED and speaker off
 				{
 					LL_GPIO_SetOutputPin(GPIOB, LL_GPIO_PIN_7);
 					LL_TIM_SetAutoReload(TIM4, ARR_CALCULATE(E_O6)); //Change ARR of Timer PWM
 				}
 				
+				/*-----------show distance on 7-segment----------------*/
 				for(int order=3;order>=0;order--)
 				{
 					sh_seg[order] = num%10;
@@ -264,7 +264,7 @@ void TIM_BASE_DurationConfig(void)
 	//Time-base configure
 	timbase_initstructure.ClockDivision = LL_TIM_CLOCKDIVISION_DIV1;
 	timbase_initstructure.CounterMode = LL_TIM_COUNTERMODE_UP;
-	timbase_initstructure.Autoreload = 300 - 1;
+	timbase_initstructure.Autoreload = 200 - 1;
 	timbase_initstructure.Prescaler =  32000 - 1;
 	LL_TIM_Init(TIM2, &timbase_initstructure);
 	
